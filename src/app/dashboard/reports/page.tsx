@@ -5,24 +5,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { exportedDb as firebaseDb } from '@/lib/firebase';
 import { collection, query, getDocs, where, Timestamp } from 'firebase/firestore';
 import { format, differenceInMinutes } from 'date-fns';
-import { jsPDF } from "jspdf";
-import 'jspdf-autotable';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-
-// Add type augmentation for jsPDF
-declare module 'jspdf' {
-  interface jsPDF {
-    autoTable: (options: {
-      head: string[][];
-      body: string[][];
-      startY: number;
-      styles: { fontSize: number };
-      headStyles: { fillColor: number[] };
-      theme: string;
-    }) => void;
-  }
-}
+import Script from 'next/script';
+import html2pdf from 'html2pdf.js';
 
 interface AttendanceRecord {
   id: string;
@@ -55,6 +41,8 @@ export default function ReportsPage() {
   const { isManager } = useAuth();
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [pdfMakeLoaded, setPdfMakeLoaded] = useState(false);
   const [startDate, setStartDate] = useState(new Date());
   const [endDate, setEndDate] = useState(new Date());
   const [userNames, setUserNames] = useState<{ [key: string]: string }>({});
@@ -66,6 +54,33 @@ export default function ReportsPage() {
     late: 0,
     absent: 0
   });
+
+  // Load pdfMake scripts
+  useEffect(() => {
+    const loadPdfMake = async () => {
+      try {
+        await Promise.all([
+          new Promise((resolve) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js';
+            script.onload = resolve;
+            document.head.appendChild(script);
+          }),
+          new Promise((resolve) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js';
+            script.onload = resolve;
+            document.head.appendChild(script);
+          })
+        ]);
+        setPdfMakeLoaded(true);
+      } catch (error) {
+        console.error('Error loading PDF scripts:', error);
+      }
+    };
+
+    loadPdfMake();
+  }, []);
 
   // Add calculateSummaryStats function
   const calculateSummaryStats = (records: AttendanceRecord[]) => {
@@ -151,56 +166,105 @@ export default function ReportsPage() {
     fetchAttendanceRecords();
   }, [isManager, startDate, endDate, selectedUser]);
 
-  const generatePDF = () => {
+  const generatePDF = async () => {
+    if (generatingPDF) return;
+    
     try {
-      const doc = new jsPDF();
-      
-      // Add title
-      doc.setFontSize(18);
-      doc.text('Attendance Report', 14, 22);
+      setGeneratingPDF(true);
 
-      // Add date range and employee filter info
-      doc.setFontSize(11);
-      doc.text(
-        `Date Range: ${format(startDate, 'MMM d, yyyy')} - ${format(endDate, 'MMM d, yyyy')}`,
-        14,
-        32
-      );
-      doc.text(
-        `Employee: ${selectedUser === 'all' ? 'All Employees' : userNames[selectedUser]}`,
-        14,
-        40
-      );
+      // Create a temporary div for the PDF content
+      const element = document.createElement('div');
+      element.innerHTML = `
+        <div style="padding: 20px;">
+          <!-- Header -->
+          <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+            <h1 style="color: #1e40af; font-size: 24px; margin: 0;">Brand Care</h1>
+            <h2 style="color: #1e40af; font-size: 20px; margin: 0;">Attendance Management System</h2>
+          </div>
 
-      // Create table data
-      const tableData = attendanceRecords.map(record => [
-        format(record.date.toDate(), 'MMM d, yyyy'),
-        userNames[record.userId] || record.userId,
-        record.inTime ? format(record.inTime.toDate(), 'hh:mm a') : 'Not Marked',
-        record.outTime ? format(record.outTime.toDate(), 'hh:mm a') : 'Not marked',
-        record.status,
-        record.inTime && record.outTime ? calculateDuration(record.inTime, record.outTime) : 
-          record.status === 'ABSENT' ? 'Absent' : '-',
-        record.overtime > 0 ? `${record.overtime.toFixed(2)}h` : '-'
-      ]);
+          <!-- Title -->
+          <h2 style="color: #1e40af; text-align: center; margin: 20px 0;">Attendance Report</h2>
 
-      doc.autoTable({
-        head: [['Date', 'Employee', 'Check-in', 'Check-out', 'Status', 'Duration', 'Overtime']],
-        body: tableData,
-        startY: 48,
-        styles: { fontSize: 10 },
-        headStyles: { fillColor: [66, 139, 202] },
-        theme: 'grid'
-      });
+          <!-- Info Section -->
+          <div style="margin: 20px 0;">
+            <p style="margin: 5px 0;"><strong>Date Range:</strong> ${format(startDate, 'MMM d, yyyy')} - ${format(endDate, 'MMM d, yyyy')}</p>
+            <p style="margin: 5px 0;"><strong>Employee:</strong> ${selectedUser === 'all' ? 'All Employees' : userNames[selectedUser]}</p>
+          </div>
 
-      // Save PDF
-      const fileName = selectedUser === 'all' 
-        ? `attendance-report-all-${format(new Date(), 'yyyy-MM-dd')}.pdf`
-        : `attendance-report-${userNames[selectedUser]}-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
-      doc.save(fileName);
+          <!-- Summary Stats -->
+          <div style="display: flex; gap: 30px; margin: 20px 0;">
+            <p style="margin: 0; color: #1e40af;"><strong>Total Records:</strong> ${summaryStats.total}</p>
+            <p style="margin: 0; color: #15803d;"><strong>Present:</strong> ${summaryStats.present}</p>
+            <p style="margin: 0; color: #854d0e;"><strong>Late:</strong> ${summaryStats.late}</p>
+            <p style="margin: 0; color: #dc2626;"><strong>Absent:</strong> ${summaryStats.absent}</p>
+          </div>
+
+          <!-- Table -->
+          <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+            <thead>
+              <tr style="background-color: #e2e8f0;">
+                <th style="padding: 12px; text-align: left; color: #1e3a8a; border: 1px solid #cbd5e1;">Date</th>
+                <th style="padding: 12px; text-align: left; color: #1e3a8a; border: 1px solid #cbd5e1;">Employee</th>
+                <th style="padding: 12px; text-align: left; color: #1e3a8a; border: 1px solid #cbd5e1;">Check In</th>
+                <th style="padding: 12px; text-align: left; color: #1e3a8a; border: 1px solid #cbd5e1;">Check Out</th>
+                <th style="padding: 12px; text-align: left; color: #1e3a8a; border: 1px solid #cbd5e1;">Status</th>
+                <th style="padding: 12px; text-align: left; color: #1e3a8a; border: 1px solid #cbd5e1;">Duration</th>
+                <th style="padding: 12px; text-align: left; color: #1e3a8a; border: 1px solid #cbd5e1;">Overtime</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${attendanceRecords.map((record, index) => `
+                <tr style="background-color: ${index % 2 === 0 ? '#f8fafc' : '#ffffff'};">
+                  <td style="padding: 12px; border: 1px solid #e2e8f0;">${format(record.date.toDate(), 'MMM d, yyyy')}</td>
+                  <td style="padding: 12px; border: 1px solid #e2e8f0;">${userNames[record.userId] || 'Unknown'}</td>
+                  <td style="padding: 12px; border: 1px solid #e2e8f0;">${record.inTime ? format(record.inTime.toDate(), 'hh:mm a') : '-'}</td>
+                  <td style="padding: 12px; border: 1px solid #e2e8f0;">${record.outTime ? format(record.outTime.toDate(), 'hh:mm a') : '-'}</td>
+                  <td style="padding: 12px; border: 1px solid #e2e8f0; color: ${
+                    record.status === 'PRESENT' ? '#15803d' : 
+                    record.status === 'LATE' ? '#854d0e' : '#dc2626'
+                  };">${record.status || 'Unknown'}</td>
+                  <td style="padding: 12px; border: 1px solid #e2e8f0;">${record.inTime && record.outTime ? calculateDuration(record.inTime, record.outTime) : '-'}</td>
+                  <td style="padding: 12px; border: 1px solid #e2e8f0; color: ${record.overtime > 0 ? '#15803d' : '#666666'};">
+                    ${record.overtime > 0 ? `${record.overtime.toFixed(2)}h` : '-'}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <!-- Footer -->
+          <div style="margin-top: 20px; display: flex; justify-content: space-between; color: #64748b; font-size: 12px;">
+            <span>${format(new Date(), 'MMM d, yyyy, h:mm a')}</span>
+            <span>Generated by Brand Care AMS</span>
+          </div>
+        </div>
+      `;
+
+      // PDF options
+      const options = {
+        margin: 10,
+        filename: `attendance-report-${selectedUser === 'all' ? 'all-employees' : userNames[selectedUser]?.replace(/\s+/g, '-').toLowerCase() || 'unknown'}-${format(new Date(), 'yyyy-MM-dd-HHmm')}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { 
+          scale: 2,
+          logging: false,
+          useCORS: true
+        },
+        jsPDF: { 
+          unit: 'mm', 
+          format: 'a4', 
+          orientation: 'landscape'
+        }
+      };
+
+      // Generate PDF
+      const pdf = await html2pdf().from(element).set(options).save();
+
     } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Error generating PDF. Please try again.');
+      console.error('PDF Generation Error:', error);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setGeneratingPDF(false);
     }
   };
 
@@ -297,9 +361,24 @@ export default function ReportsPage() {
             <div className="flex items-end">
               <button
                 onClick={generatePDF}
-                className="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
+                disabled={generatingPDF}
+                className={`w-full ${
+                  generatingPDF
+                    ? 'bg-blue-400 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                } text-white px-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200`}
               >
-                Download Report
+                {generatingPDF ? (
+                  <span className="flex items-center justify-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Generating PDF...
+                  </span>
+                ) : (
+                  'Download Report'
+                )}
               </button>
             </div>
           </div>
