@@ -35,7 +35,7 @@ export default function MyAttendancePage() {
     }
 
     const fetchAttendanceRecords = async () => {
-      if (!user?.uid || !firebaseDb) return;
+      if (!user?.uid) return;
 
       try {
         setLoading(true);
@@ -43,7 +43,7 @@ export default function MyAttendancePage() {
         const start = startOfMonth(selectedMonth);
         const end = endOfMonth(selectedMonth);
 
-        const attendanceRef = collection(firebaseDb, 'attendance');
+        const attendanceRef = collection(firebaseDb!, 'attendance');
         const q = query(
           attendanceRef,
           where('userId', '==', user.uid),

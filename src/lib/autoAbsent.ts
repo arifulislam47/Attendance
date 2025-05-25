@@ -9,7 +9,7 @@ export const markAbsentEmployees = async () => {
     const todayTimestamp = Timestamp.fromDate(today);
 
     // Get all users
-    const usersSnapshot = await getDocs(collection(firebaseDb, 'users'));
+    const usersSnapshot = await getDocs(collection(firebaseDb!, 'users'));
     const users = usersSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -17,7 +17,7 @@ export const markAbsentEmployees = async () => {
 
     // For each user, check if they have an attendance record for today
     for (const user of users) {
-      const attendanceRef = collection(firebaseDb, 'attendance');
+      const attendanceRef = collection(firebaseDb!, 'attendance');
       const q = query(
         attendanceRef,
         where('userId', '==', user.id),
@@ -39,7 +39,7 @@ export const markAbsentEmployees = async () => {
           status: 'ABSENT',
           overtime: 0,
         };
-        await addDoc(collection(firebaseDb, 'attendance'), absentRecord);
+        await addDoc(collection(firebaseDb!, 'attendance'), absentRecord);
         console.log(`Marked user ${user.id} as absent for ${today.toDateString()}`);
       }
     }

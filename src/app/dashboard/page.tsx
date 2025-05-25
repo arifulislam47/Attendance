@@ -93,7 +93,7 @@ export default function DashboardPage() {
 
   // Fix useCallback dependencies
   const checkTodayAttendance = useCallback(async () => {
-    if (!user?.uid || loading || !firebaseDb) return;
+    if (!user?.uid || loading) return;
 
     try {
       setLoading(true);
@@ -101,7 +101,7 @@ export default function DashboardPage() {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const attendanceRef = collection(firebaseDb, 'attendance');
+      const attendanceRef = collection(firebaseDb!, 'attendance');
       const q = query(
         attendanceRef,
         where('userId', '==', user.uid),
@@ -155,7 +155,7 @@ export default function DashboardPage() {
 
   // Fix useEffect dependencies
   useEffect(() => {
-    if (!user?.uid || !firebaseDb) return;
+    if (!user?.uid) return;
     
     setIsFirebaseReady(true);
     checkTodayAttendance();
