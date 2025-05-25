@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "env": {
+    "NEXT_PUBLIC_FIREBASE_API_KEY": "AIzaSyBm_LTts_gQ94KuRzb_-h5A0btxoU_xjeE",
+    "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN": "brand-care-b152e.firebaseapp.com",
+    "NEXT_PUBLIC_FIREBASE_PROJECT_ID": "brand-care-b152e",
+    "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET": "brand-care-b152e.firebasestorage.app",
+    "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "873548866972",
+    "NEXT_PUBLIC_FIREBASE_APP_ID": "1:873548866972:web:e9caf10e59a0c4bf5f5459",
+    "NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-RPBCVKTKE4"
+  }
+} 
